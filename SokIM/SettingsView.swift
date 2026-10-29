@@ -1,5 +1,6 @@
 import SwiftUI
 import Carbon.HIToolbox
+import IOKit.hid
 
 /** 툴바 탭으로 나뉜 설정 화면 */
 func makeSettingsViewController() -> NSViewController {
@@ -40,6 +41,8 @@ private struct GeneralSettingsView: View {
     @State private var rotateKeys = Preferences.rotateKeys
     @State private var graveOverWon = Preferences.graveOverWon
     @State private var debugMode = Preferences.debug
+    @State private var isInputMonitoringGranted = false
+    @State private var isAccessibilityGranted = false
 
     var body: some View {
         Form {
@@ -64,6 +67,11 @@ private struct GeneralSettingsView: View {
                 Toggle("한글 입력 시 ₩ 대신 ` 입력", isOn: $graveOverWon)
                 Toggle("디버그 모드", isOn: $debugMode)
             }
+
+            Section("권한") {
+                PermissionRow(title: "입력 모니터링", isGranted: isInputMonitoringGranted, pane: "Privacy_ListenEvent")
+                PermissionRow(title: "손쉬운 사용", isGranted: isAccessibilityGranted, pane: "Privacy_Accessibility")
+            }
         }
         .formStyle(.grouped)
         .toggleStyle(.switch)
@@ -73,6 +81,9 @@ private struct GeneralSettingsView: View {
         .onChange(of: rotateKeys) { Preferences.rotateKeys = $0 }
         .onChange(of: graveOverWon) { Preferences.graveOverWon = $0 }
         .onChange(of: debugMode) { Preferences.debug = $0 }
+        .onAppear(perform: checkPermissions)
+        // 시스템 설정에서 바꾼 권한을 반영
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in checkPermissions() }
     }
 
     private func removeButton(_ key: RotateKey?) -> some View {
@@ -83,6 +94,41 @@ private struct GeneralSettingsView: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
+    }
+
+    private func checkPermissions() {
+        isInputMonitoringGranted = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        isAccessibilityGranted = AXIsProcessTrusted()
+    }
+}
+
+/** 권한 허용 여부와 시스템 설정 바로 가기 */
+private struct PermissionRow: View {
+    let title: String
+    let isGranted: Bool
+    let pane: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+
+            Spacer()
+
+            if isGranted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("허용됨")
+            } else {
+                Text("허용 안 됨")
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("열기") {
+                NSWorkspace.shared.open(
+                    URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?\(pane)")!
+                )
+            }
+        }
     }
 }
 
